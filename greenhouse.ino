@@ -2,7 +2,7 @@
 #include <DHT.h>
 #include <DHT_U.h>
 
-int seconds(int ms) {
+long seconds(long ms) {
   return (ms * 1000);
 }
 
@@ -28,23 +28,26 @@ const float c1 = 0.001129148, c2 = 0.000234125, c3 = 0.0000000876741; //steinhar
 const int kelvin = 273.15;
 
 // Settings
-const int clockRate = 100;         // ms
-int testRate = seconds(2);   // how often sensor readings are taken, and how window delays for
-int liveRate = seconds(240); // 4mins
+const long clockRate = 100;   // ms
+long testRate = seconds(2);   // how often sensor readings are taken
+long liveRate = seconds(30);
 
-const int pumpWaitTest = seconds(120);
-const int pumpWaitLive = seconds(86400); // one day
-const int pumpRunTestRate = seconds(30); // how long the pump runs for
-const int pumpRunLiveRate = seconds(120);
+long windowTestRate = seconds(10);   // how often sensor readings are taken, and how window delays for
+long windowLiveRate = seconds(240); // 4mins
+
+const long pumpWaitTest = seconds(120); // how long we wait before running the pump
+const long pumpWaitLive = seconds(86400); // one day
+const long pumpRunTestRate = seconds(30); // how long the pump runs for
+const long pumpRunLiveRate = seconds(120);
 
 // Variables
 int Vo;
 float logR2, R2, T, vOut, tempRangeHigh, tempRangeLow;
 float averagedTemp;
-int samplingLoop; // keeps track of internal 'sampling' loop
-int windowLoop;   // keeps track of windows opening and closing
-int pumpLoop;     // keeps track of pumping check state
-int pumpRun = 0;
+long samplingLoop; // keeps track of internal 'sampling' loop (ms)
+long windowLoop;   // keeps track of check for windowsopening and closing (ms)
+long pumpLoop;     // keeps track of pumping check state (ms)
+long pumpRun = 0;
 int digitalTemperature;
 int digitalHumidity;
 
@@ -56,22 +59,31 @@ int error = 0;
 int targetTemp = 23;
 
 // Test or live rates - sampler
-int getInterval() {
-//  if (!testMode) {
-//    return liveRate;
-//  }
-  return testRate;
+long getInterval() {
+  if (testMode == true) {
+    return testRate;
+  }
+  return liveRate;
+}
+
+
+// Test or live rates - window
+long getWindowTime() {
+  if (testMode == true) {
+    return windowTestRate;
+  }
+  return windowLiveRate;
 }
 
 // Test or live rates - pump only
 // wait = wait time otherwise run time
-int getPumpRate(bool wait)
+long getPumpRate(bool wait)
 {
-  if (!testMode)
+  if (testMode == true)
   {
-    return wait ? pumpWaitLive : pumpRunLiveRate;
+    return wait ? pumpWaitTest : pumpRunTestRate;
   }
-  return wait ? pumpWaitTest : pumpRunTestRate;
+  return wait ? pumpWaitLive : pumpRunLiveRate;
 }
 
 void closeWindow() {
@@ -111,7 +123,7 @@ float deKelvinify(float value) {
 // Error 2 - Analogue temp not correct
 // Error 3 - Digital humidity not correct
 void handleError(int errorCode) {
-  Serial.println("ERROR ");
+  Serial.print("ERROR ");
   Serial.println(error);
   digitalWrite(errLed, HIGH);
   error = errorCode;
@@ -160,18 +172,18 @@ void setup() {
 }
 
 void loop() {
-  if (digitalRead(modeSelektor) == HIGH)
-  {
-    testMode = true;
-    digitalWrite(testLed, HIGH);
-    digitalWrite(normalLed, LOW);
-  }
-  else
-  {
-    testMode = false;
-    digitalWrite(testLed, LOW);
-    digitalWrite(normalLed, HIGH);
-  }
+//  if (digitalRead(modeSelektor) == HIGH) {
+//    testMode = true;
+//    digitalWrite(testLed, HIGH);
+//    digitalWrite(normalLed, LOW);
+//  }
+//  else
+//  {
+//    testMode = false;
+//    digitalWrite(testLed, LOW);
+//    digitalWrite(normalLed, HIGH);
+//  }
+
 
   // Are we running a sample in this loop?
   if (samplingLoop > getInterval())
@@ -180,8 +192,8 @@ void loop() {
 
     // Get humidity event and print its value.
     digitalHumidity = dht.readHumidity();
-    Serial.println(F("Digital humidity: "));
-    Serial.println(digitalHumidity);
+    Serial.print(F("Digital humidity: "));
+    Serial.print(digitalHumidity);
     Serial.println(F("%"));
 
     // Therminsor calculations
@@ -191,19 +203,21 @@ void loop() {
     T = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2)); // temperature in Kelvin
     T = T - 273.15;                                             //convert Kelvin to Celcius
 
-    Serial.println("Analogue temperature ");
-    Serial.println(T);
+    Serial.print("Analogue temperature ");
+    Serial.print(T);
     Serial.println("c");
 
     digitalTemperature = dht.readTemperature();
-    Serial.println(F("Digital temperature: "));
-    Serial.println(digitalTemperature);
+    Serial.print(F("Digital temperature: "));
+    Serial.print(digitalTemperature);
     Serial.println(F("°C"));
 
+    // Take a gradual average 
     averagedTemp = (averagedTemp + ((T + digitalTemperature) * 0.5)) * 0.5;
 
     if (isnan(digitalTemperature))
     {
+      averagedTemp = T;
       handleError(1);
     }
 
@@ -218,12 +232,12 @@ void loop() {
       handleError(3);
     }
 
-    Serial.println("Average temperature: ");
-    Serial.println(averagedTemp);
+    Serial.print("Average temperature: ");
+    Serial.print(averagedTemp);
     Serial.println(" c");
 
-    Serial.println("Target temperature is :");
-    Serial.println(targetTemp);
+    Serial.print("Target temperature is :");
+    Serial.print(targetTemp);
     Serial.println(" c");
 
     Serial.println("***********************************");
@@ -231,10 +245,10 @@ void loop() {
   // End temperature reading
 
   // Are we running a window check this loop?
-  if (windowLoop >= getInterval())
+  if (windowLoop >= getWindowTime())
   {
     Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-    Serial.println("Window open state check : ");
+    Serial.print("Window open state check : ");
     Serial.println(windowOpen);
 
     // It's too hot, open if not already open
@@ -267,10 +281,6 @@ void loop() {
     Serial.println("###############################");
   };
 
-Serial.print("here");
-Serial.println(getInterval());
-  delay(getInterval());
-
 // Stuff that needs checking every loop e.g. button, switch status, pump state
 
 // Temp button control
@@ -299,8 +309,6 @@ if (pumpRunning) {
 }
 
 // Increment each check counter
-
-Serial.println(samplingLoop);
 
 samplingLoop = (samplingLoop + clockRate);
 windowLoop = (windowLoop + clockRate);
