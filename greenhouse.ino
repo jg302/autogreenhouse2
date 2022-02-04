@@ -48,13 +48,14 @@ long samplingLoop; // keeps track of internal 'sampling' loop (ms)
 long windowLoop;   // keeps track of check for windowsopening and closing (ms)
 long pumpLoop;     // keeps track of pumping check state (ms)
 long pumpRun = 0;
+int buttonCycle = 0; // keeps track if the button was pressed recently
 int digitalTemperature;
 int digitalHumidity;
 
 // States
 bool windowOpen = false;      // Will need to init off a switch i guess
 bool pumpRunning = false;
-bool testMode = true;
+bool testMode;
 int error = 0;
 int targetTemp = 23;
 
@@ -129,6 +130,12 @@ void handleError(int errorCode) {
   error = errorCode;
 }
 
+void handleButtonChange() {
+   Serial.print("targetTemp changed to ");
+   Serial.println(targetTemp);
+   buttonCycle = 4;
+}
+
 void setup() {
   Serial.begin(9600);
 
@@ -147,47 +154,53 @@ void setup() {
   Serial.println("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
   Serial.println(" BEGIN ");
 
-  // Test sequence
-//  openWindow();
-//  delay(seconds(10));
-//  closeWindow();
-//  delay(1000);
-//  runPump();
-//  delay(seconds(4));
-//  stopPump();
-//  delay(1000);
-//  digitalWrite(normalLed, HIGH);
-//  delay(1000);
-//  digitalWrite(normalLed, LOW);
-//  delay(1000);
-//  digitalWrite(testLed, HIGH);
-//  delay(1000);
-//  digitalWrite(testLed, LOW);
-//  delay(1000);
-//  digitalWrite(errLed, HIGH);
-//  delay(1000);
-//  digitalWrite(errLed, LOW);
-//  Serial.println("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-//  Serial.println("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+  // Test sequence if in test mode
+  if (digitalRead(modeSelektor) == LOW) {
+  testMode = true;
+  openWindow();
+  delay(seconds(10));
+  closeWindow();
+  delay(1000);
+  runPump();
+  delay(seconds(4));
+  stopPump();
+  delay(1000);
+  digitalWrite(normalLed, HIGH);
+  delay(1000);
+  digitalWrite(normalLed, LOW);
+  digitalWrite(testLed, HIGH);
+  delay(1000);
+  digitalWrite(testLed, LOW);
+  digitalWrite(errLed, HIGH);
+  delay(1000);
+  digitalWrite(errLed, LOW);
+  Serial.println("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+  Serial.println("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+  }
 }
 
 void loop() {
-//  if (digitalRead(modeSelektor) == HIGH) {
-//    testMode = true;
-//    digitalWrite(testLed, HIGH);
-//    digitalWrite(normalLed, LOW);
-//  }
-//  else
-//  {
-//    testMode = false;
-//    digitalWrite(testLed, LOW);
-//    digitalWrite(normalLed, HIGH);
-//  }
+  if (digitalRead(modeSelektor) == LOW && !testMode) {
+    Serial.println(">>> Mode changed to TEST MODE <<<");
+    testMode = true;
+    digitalWrite(testLed, HIGH);
+    digitalWrite(normalLed, LOW);
+  }
+  
+  if (testMode && digitalRead(modeSelektor) == HIGH)
+  {
+    Serial.println(">>> Mode changed to NORMAL MODE <<<");
+    testMode = false;
+    digitalWrite(testLed, LOW);
+  }
 
+    digitalWrite(normalLed, HIGH);
 
   // Are we running a sample in this loop?
   if (samplingLoop > getInterval())
   {
+    digitalWrite(testLed, LOW);
+    digitalWrite(normalLed, LOW);
     samplingLoop = 0;
 
     // Get humidity event and print its value.
@@ -284,16 +297,19 @@ void loop() {
 // Stuff that needs checking every loop e.g. button, switch status, pump state
 
 // Temp button control
-if (digitalRead(plusPin) == HIGH) {
-    targetTemp = targetTemp + 1;
-    Serial.println("targetTemp changed to ");
-    Serial.println(targetTemp);
-}
+// Debounce type effect
+if (buttonCycle == 0) {
+  if (digitalRead(plusPin) == HIGH) {
+      targetTemp = targetTemp + 1;
+      handleButtonChange();
+  }
 
-if (digitalRead(minusPin) == HIGH) {
-    targetTemp = targetTemp - 1;
-    Serial.print("targetTemp changed to ");
-    Serial.println(targetTemp);
+  if (digitalRead(minusPin) == HIGH) {
+      targetTemp = targetTemp - 1;
+      handleButtonChange();
+  }
+} else {
+  buttonCycle = buttonCycle - 1;
 }
 
 // Pump run time checker
